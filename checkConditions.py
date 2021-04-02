@@ -68,7 +68,7 @@ def send_email(email_body):
 		message['From']    = email_sender_username
 		message['To']      = recipient
 		message['Subject'] = email_subject
-		message.attach(MIMEText(email_body, 'html'))
+		message.attach(MIMEText(email_body, 'plain'))
 		text = message.as_string()
 		server.sendmail(email_sender_username, recipient, text)
 
