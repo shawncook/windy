@@ -59,8 +59,7 @@ def degrees_to_cardinal(d):
 
 # use smtplib to send and email
 def send_email(email_body):
-	server = smtplib.SMTP(email_smtp_server, email_smtp_port)
-	server.starttls()
+	server = smtplib.SMTP_SSL(email_smtp_server, email_smtp_port)
 	server.login(email_sender_username, email_sender_password)
 
 	for recipient in email_recipients:
