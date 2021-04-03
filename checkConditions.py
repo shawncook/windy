@@ -1,28 +1,26 @@
 import os, requests, json, smtplib
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-api_key = os.environ.get('API_KEY')
-base_url = 'http://api.openweathermap.org/data/2.5/forecast?'
-zip_code = os.environ.get('ZIP_CODE')
-complete_url = base_url + 'appid=' + api_key + '&zip=' + zip_code + '&units=imperial'
-response = requests.get(complete_url)
-respJson = response.json()
+api_key   = os.environ.get('API_KEY')
+base_url  = 'http://api.openweathermap.org/data/2.5/forecast?'
+zip_code  = os.environ.get('ZIP_CODE')
+req_url   = base_url + 'appid=' + api_key + '&zip=' + zip_code + '&units=imperial'
+resp_json = requests.get(req_url).json()
 
-#Email Account
-email_sender_username = os.environ.get('SENDER_USERNAME')
-email_sender_password = os.environ.get('SENDER_PASSWORD')
-email_smtp_server = os.environ.get('SMTP_SERVER')
-email_smtp_port = os.environ.get('SMTP_PORT')
-
-#Email Content
-email_recipients = [ os.environ.get('RECIPIENT') ]
-email_subject = '🪁 Upcoming kite conditions'
+# email account creds
+email_recipients   = [ os.environ.get('RECIPIENT') ]
+email_sender_pw    = os.environ.get('SENDER_PASSWORD')
+email_sender_uname = os.environ.get('SENDER_USERNAME')
+email_smtp_port    = os.environ.get('SMTP_PORT')
+email_smtp_server  = os.environ.get('SMTP_SERVER')
+email_subject      = '🪁 Upcoming kite conditions'
 
 # cloud cover under 85% (overcast).
 def check_cloud_cover(clouds):
@@ -59,17 +57,19 @@ def degrees_to_cardinal(d):
 # use smtplib to send and email
 def send_email(email_body):
 	server = smtplib.SMTP_SSL(email_smtp_server, email_smtp_port)
-	server.login(email_sender_username, email_sender_password)
+	server.login(email_sender_uname, email_sender_pw)
 
-	for recipient in email_recipients:
-		print(f'Sending email to {recipient}.')
+	for recipient in email_recipients:		
 		message            = MIMEMultipart('alternative')
-		message['From']    = email_sender_username
+		message['From']    = email_sender_uname
 		message['To']      = recipient
 		message['Subject'] = email_subject
+		
 		message.attach(MIMEText(email_body, 'plain'))
-		text = message.as_string()
-		server.sendmail(email_sender_username, recipient, text)
+
+		print(f'Sending email to {recipient}.')
+
+		server.sendmail(email_sender_uname, recipient, message.as_string())
 
 	server.quit()
 
@@ -91,44 +91,52 @@ def validate_condition(cond):
 	)
 
 # build list of contitions and data.
-def build_email_body(condition):
+def build_datapoint(condition):
+	desc = condition['weather'][0]['description']
+	dt   = datetime.utcfromtimestamp(condition['dt'])
 	main = condition['main']
 	wind = condition['wind']
-	desc = condition['weather'][0]['description'].title()
 	temp = main['temp']
 
-	dt = datetime.utcfromtimestamp(condition['dt'])
-	date_string = str(format_date_time(dt))
-	date_string += (
+	# begin with date and time.
+	body = str(format_date_time(dt))
+
+	# append wind speed and direction
+	body += (
 		'\r\n'
 		'Wind speed: '
 		+ str(round(wind['speed'])) + ' mph '
 		+ str(degrees_to_cardinal(wind['deg']))
 	)
+
+	# if favoratble direction, append star
 	if check_wind_direction(wind):
-		date_string += ' ⭐️'
-	date_string += (
+		body += ' ⭐️'
+
+	# append conditions
+	body += (
 		'\r\n'
 		'Conditions: '
-		+ str(round(main['temp'])) + '\u00b0F, ' + str(desc)
+		+ str(round(main['temp'])) + '\u00b0F, ' + str(desc.title())
 	)
-	return date_string
+
+	return body
 
 # format date/time to specified format
 def format_date_time(dt):
 	date_string = '{0:%I:%M%p %A}'.format(dt).lstrip('0')
 	date_string += ' {0:%b %d}'.format(dt).lstrip('0')
+
 	return date_string
 
 # do the rest
-if respJson['cod'] != '404':
-	conditions_list = respJson['list']
+if resp_json['cod'] != '404':
+	conditions_list = resp_json['list']
 	optimal_dates = []
 
 	for condition in conditions_list:
 		if validate_condition(condition):
-			date_string = build_email_body(condition)
-			optimal_dates.append(date_string)
+			optimal_dates.append(build_datapoint(condition))
 
 	# if there are optimal dates, do things.
 	if len(optimal_dates):
