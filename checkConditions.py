@@ -24,19 +24,19 @@ email_smtp_port = os.environ.get('SMTP_PORT')
 email_recipients = [ os.environ.get('RECIPIENT') ]
 email_subject = '🪁 Upcoming kite conditions'
 
-# cloud cover under 60%.
+# cloud cover under 85% (overcast).
 def check_cloud_cover(clouds):
-	return clouds['all'] < 60
+	return clouds['all'] < 85
 
 # Must be Friday, Saturday or Sunday.
 def check_day_valid(date):
 	weekday = date.weekday()
-	valid_days = range(4, 6)
+	valid_days = range(4, 7)
 	return weekday in valid_days
 
-# Hour must be between 10am and 5pm.
+# Hour must be between 10am and 6pm.
 def check_hours_valid(date):
-	return 10 <= date.hour <= 17
+	return 10 <= date.hour <= 18
 
 # Temp is between 50 and 90.
 def check_temp_valid(temp):
@@ -46,16 +46,15 @@ def check_temp_valid(temp):
 def check_wind_direction(wind):
 	return 45 <= wind['deg'] <= 180
 
-# wind speed between 12 and 20mph
+# wind speed between 8 and 20mph
 def check_wind_speed(wind):
-	return 12 <= wind['speed'] <= 20
+	return 8 <= wind['speed'] <= 20
 
 # get human readable wind direction
 def degrees_to_cardinal(d):
-    dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
-            'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
-    ix = int((d + 11.25)/22.5)
-    return dirs[ix % 16]
+	dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+	ix = int((d + 11.25)/22.5)
+	return dirs[ix % 16]
 
 # use smtplib to send and email
 def send_email(email_body):
@@ -77,33 +76,48 @@ def send_email(email_body):
 # validate a weather condition
 def validate_condition(cond):
 	clouds = cond['clouds']
-	date   = cond['dt']
+	dt     = cond['dt']
 	main   = cond['main']
 	wind   = cond['wind']
-
-	temp = main['temp']
-	date_parsed = datetime.utcfromtimestamp(date)
+	temp   = main['temp']
+	date   = datetime.utcfromtimestamp(dt)
 
 	return (
 		check_cloud_cover(clouds)
-		and check_day_valid(date_parsed)
-		and check_hours_valid(date_parsed)
+		and check_day_valid(date)
+		and check_hours_valid(date)
 		and check_temp_valid(temp)
 		and check_wind_speed(wind)
 	)
 
 # build list of contitions and data.
 def build_email_body(condition):
+	main = condition['main']
 	wind = condition['wind']
-	date_parsed = datetime.utcfromtimestamp(condition['dt'])
-	date_string = str(date_parsed.strftime('%A %x - %I:%M%p'))
+	desc = condition['weather'][0]['description'].title()
+	temp = main['temp']
+
+	dt = datetime.utcfromtimestamp(condition['dt'])
+	date_string = str(format_date_time(dt))
 	date_string += (
-		' - Winds '
-		+ str(wind['speed']) + 'mph '
+		'\r\n'
+		'Wind speed: '
+		+ str(round(wind['speed'])) + ' mph '
 		+ str(degrees_to_cardinal(wind['deg']))
 	)
 	if check_wind_direction(wind):
 		date_string += ' ⭐️'
+	date_string += (
+		'\r\n'
+		'Conditions: '
+		+ str(round(main['temp'])) + '\u00b0F, ' + str(desc)
+	)
+	return date_string
+
+# format date/time to specified format
+def format_date_time(dt):
+	date_string = '{0:%I:%M%p %A}'.format(dt).lstrip('0')
+	date_string += ' {0:%b %d}'.format(dt).lstrip('0')
 	return date_string
 
 # do the rest
@@ -119,7 +133,7 @@ if respJson['cod'] != '404':
 	# if there are optimal dates, do things.
 	if len(optimal_dates):
 		message = 'Optimal conditions upcoming on the following dates:\r\n\r\n'
-		message += '\r\n'.join(optimal_dates)
+		message += '\r\n\r\n'.join(optimal_dates)
 		message += '\r\n\r\nHave fun!'
 
 		print(message)
