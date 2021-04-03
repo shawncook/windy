@@ -36,6 +36,10 @@ def check_day_valid(date):
 def check_hours_valid(date):
 	return 10 <= date.hour <= 18
 
+# check probability of precipitation
+def check_precipitation(pop):
+	return pop < 25
+
 # Temp is between 50 and 90.
 def check_temp_valid(temp):
 	return 50 <= temp <= 90
@@ -78,6 +82,7 @@ def validate_condition(cond):
 	clouds = cond['clouds']
 	dt     = cond['dt']
 	main   = cond['main']
+	pop    = cond['pop']
 	wind   = cond['wind']
 	temp   = main['temp']
 	date   = datetime.utcfromtimestamp(dt)
@@ -86,6 +91,7 @@ def validate_condition(cond):
 		check_cloud_cover(clouds)
 		and check_day_valid(date)
 		and check_hours_valid(date)
+		and check_precipitation(pop)
 		and check_temp_valid(temp)
 		and check_wind_speed(wind)
 	)
