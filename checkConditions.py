@@ -1,4 +1,4 @@
-import os, requests, json, smtplib
+import os, requests, json, smtplib, pgeocode
 
 from dotenv import load_dotenv
 
@@ -14,6 +14,11 @@ zip_code  = os.environ.get('ZIP_CODE')
 req_url   = base_url + 'appid=' + api_key + '&zip=' + zip_code + '&units=imperial'
 resp_json = requests.get(req_url).json()
 
+# one call, that's all
+loc      = pgeocode.Nominatim('us').query_postal_code(zip_code)
+one_call = 'https://api.openweathermap.org/data/2.5/onecall?lat=%d&lon=%d&exclude=minutely&units=imperial&appid=%s' % (loc.latitude, loc.longitude, api_key)
+one_call_rsp = requests.get(one_call).json()
+
 # email account creds
 email_recipients   = [ os.environ.get('RECIPIENT') ]
 email_sender_pw    = os.environ.get('SENDER_PASSWORD')
@@ -24,7 +29,7 @@ email_subject      = '🪁 Upcoming kite conditions'
 
 # cloud cover under 85% (overcast).
 def check_cloud_cover(clouds):
-	return clouds['all'] < 85
+	return clouds < 85
 
 # Must be Friday, Saturday or Sunday.
 def check_day_valid(date):
@@ -42,15 +47,16 @@ def check_precipitation(pop):
 
 # Temp is between 50 and 90.
 def check_temp_valid(temp):
-	return 50 <= temp <= 90
+	parsed = temp['day'] or temp
+	return 50 <= parsed <= 90
 
 # bonus points for winds from NE to S
-def check_wind_direction(wind):
-	return 45 <= wind['deg'] <= 180
+def check_wind_direction(deg):
+	return 45 <= deg <= 180
 
 # wind speed between 8 and 20mph
 def check_wind_speed(wind):
-	return 8 <= wind['speed'] <= 20
+	return 8 <= wind <= 20
 
 # get human readable wind direction
 def degrees_to_cardinal(d):
@@ -81,10 +87,9 @@ def send_email(email_body):
 def validate_condition(cond):
 	clouds = cond['clouds']
 	dt     = cond['dt']
-	main   = cond['main']
 	pop    = cond['pop']
-	wind   = cond['wind']
-	temp   = main['temp']
+	wind   = cond['wind_speed']
+	temp   = cond['temp']
 	date   = datetime.utcfromtimestamp(dt)
 
 	return (
@@ -100,9 +105,9 @@ def validate_condition(cond):
 def build_datapoint(condition):
 	desc = condition['weather'][0]['description']
 	dt   = datetime.utcfromtimestamp(condition['dt'])
-	main = condition['main']
-	wind = condition['wind']
-	temp = main['temp']
+	wind = condition['wind_speed']
+	deg  = condition['wind_deg']
+	temp = condition['temp']
 
 	# begin with date and time.
 	body = str(format_date_time(dt))
@@ -111,19 +116,19 @@ def build_datapoint(condition):
 	body += (
 		'\r\n'
 		'Wind speed: '
-		+ str(round(wind['speed'])) + ' mph '
-		+ str(degrees_to_cardinal(wind['deg']))
+		+ str(round(wind)) + ' mph '
+		+ str(degrees_to_cardinal(deg))
 	)
 
 	# if favoratble direction, append star
-	if check_wind_direction(wind):
+	if check_wind_direction(deg):
 		body += ' ⭐️'
 
 	# append conditions
 	body += (
 		'\r\n'
 		'Conditions: '
-		+ str(round(main['temp'])) + '\u00b0F, ' + str(desc.title())
+		+ str(round(temp)) + '\u00b0F, ' + str(desc.title())
 	)
 
 	return body
@@ -136,22 +141,24 @@ def format_date_time(dt):
 	return date_string
 
 # do the rest
-if resp_json['cod'] != '404':
-	conditions_list = resp_json['list']
-	optimal_dates = []
+daily   = one_call_rsp['daily']
+hourly  = one_call_rsp['hourly']
+today   = check_day_valid(datetime.today())
+optimal = []
 
-	for condition in conditions_list:
-		if validate_condition(condition):
-			optimal_dates.append(build_datapoint(condition))
+for condition in hourly:
+	if validate_condition(condition) and today == True:
+		optimal.append(build_datapoint(condition))
 
-	# if there are optimal dates, do things.
-	if len(optimal_dates):
-		message = 'Optimal conditions upcoming on the following dates:\r\n\r\n'
-		message += '\r\n\r\n'.join(optimal_dates)
-		message += '\r\n\r\nHave fun!'
+for condition in daily:
+	if validate_condition(condition):
+		optimal.append(build_datapoint(condition))
 
-		print(message)
-		send_email(message)
+# if there are optimal dates, do things.
+if len(optimal):
+	message = 'Optimal conditions upcoming on the following dates:\r\n\r\n'
+	message += '\r\n\r\n'.join(optimal)
+	message += '\r\n\r\nHave fun!'
 
-else:
-	print('Location not found.')
+	print(message)
+	send_email(message)
