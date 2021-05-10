@@ -50,6 +50,9 @@ def check_temp_valid(temp):
 	parsed = temp['day'] or temp
 	return 50 <= parsed <= 90
 
+def check_weather_desc(desc):
+	return not desc.find('rain')
+
 # bonus points for winds from NE to S
 def check_wind_direction(deg):
 	return 45 <= deg <= 180
@@ -90,6 +93,7 @@ def validate_condition(cond):
 	pop    = cond['pop']
 	wind   = cond['wind_speed']
 	temp   = cond['temp']
+	desc   = cond['weather'][0]['description']
 	date   = datetime.utcfromtimestamp(dt)
 
 	return (
@@ -97,6 +101,7 @@ def validate_condition(cond):
 		and check_day_valid(date)
 		and check_hours_valid(date)
 		and check_precipitation(pop)
+		and check_weather_desc(desc)
 		and check_temp_valid(temp)
 		and check_wind_speed(wind)
 	)
