@@ -1,3 +1,4 @@
+pgeocode==0.3.0
 python-dotenv==0.16.0
 requests==2.25.1
 suntime==1.2.5
